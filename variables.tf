@@ -26,6 +26,12 @@ variable "admin_password" {
   default     = ""
 }
 
+variable "custom_data" {
+  description = "(Optional) Specifies custom data to supply to the machine. On Linux-based systems, this can be used as a cloud-init script. On other systems, this will be copied as a file on disk. Internally, Terraform will base64 encode this value before sending it to the API. The maximum length of the binary array is 65535 bytes."
+  type        = string
+  default     = null
+}
+
 variable "ssh_key" {
   description = "Path to the public key to be used for ssh access to the VM.  Only used with non-Windows vms and can be left as-is even if using Windows vms. If specifying a path to a certification on a Windows machine to provision a linux vm use the / in the path versus backslash. e.g. c:/home/id_rsa.pub."
   type        = string
