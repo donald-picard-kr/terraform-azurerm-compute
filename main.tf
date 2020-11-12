@@ -25,15 +25,16 @@ resource "azurerm_storage_account" "vm-sa" {
   tags                     = var.tags
 }
 
-resource "azurerm_virtual_machine" "vm-linux" {
-  count                         = ! contains(list(var.vm_os_simple, var.vm_os_offer), "WindowsServer") && ! var.is_windows_image ? var.nb_instances : 0
-  name                          = "${var.vm_hostname}-vmLinux-${count.index}"
-  resource_group_name           = data.azurerm_resource_group.vm.name
-  location                      = coalesce(var.location, data.azurerm_resource_group.vm.location)
-  availability_set_id           = azurerm_availability_set.vm.id
-  vm_size                       = var.vm_size
-  network_interface_ids         = [element(azurerm_network_interface.vm.*.id, count.index)]
-  delete_os_disk_on_termination = var.delete_os_disk_on_termination
+resource "azurerm_linux_virtual_machine" "vm-linux" {
+  count                 = ! contains(list(var.vm_os_simple, var.vm_os_offer), "WindowsServer") && ! var.is_windows_image ? var.nb_instances : 0
+  name                  = "${var.vm_hostname}-vmLinux-${count.index}"
+  resource_group_name   = data.azurerm_resource_group.vm.name
+  location              = coalesce(var.location, data.azurerm_resource_group.vm.location)
+  availability_set_id   = azurerm_availability_set.vm.id
+  size                  = var.vm_size
+  network_interface_ids = [element(azurerm_network_interface.vm.*.id, count.index)]
+  #delete_os_disk_on_termination   = var.delete_os_disk_on_termination
+  #delete_data_disks_on_termination = var.delete_data_disk_on_termination
 
   dynamic identity {
     for_each = length(var.identity_ids) == 0 && var.identity_type == "SystemAssigned" ? [var.identity_type] : []
@@ -50,69 +51,73 @@ resource "azurerm_virtual_machine" "vm-linux" {
     }
   }
 
-  storage_image_reference {
-    id        = var.vm_os_id
+  source_image_reference {
+    #id        = var.vm_os_id
     publisher = var.vm_os_id == "" ? coalesce(var.vm_os_publisher, module.os.calculated_value_os_publisher) : ""
     offer     = var.vm_os_id == "" ? coalesce(var.vm_os_offer, module.os.calculated_value_os_offer) : ""
     sku       = var.vm_os_id == "" ? coalesce(var.vm_os_sku, module.os.calculated_value_os_sku) : ""
     version   = var.vm_os_id == "" ? var.vm_os_version : ""
   }
 
-  storage_os_disk {
-    name              = "osdisk-${var.vm_hostname}-${count.index}"
-    create_option     = "FromImage"
-    caching           = "ReadWrite"
-    managed_disk_type = var.storage_account_type
+  os_disk {
+    name = "osdisk-${var.vm_hostname}-${count.index}"
+    #  create_option          = "FromImage"
+    caching                = "ReadWrite"
+    storage_account_type   = var.storage_account_type
+    disk_encryption_set_id = var.os_disk_encryption_set_id
   }
 
+  /*
   dynamic storage_data_disk {
     for_each = range(var.nb_data_disk)
     content {
-      name              = "${var.vm_hostname}-datadisk-${count.index}-${storage_data_disk.value}"
-      create_option     = "Empty"
-      lun               = storage_data_disk.value
-      disk_size_gb      = var.data_disk_size_gb
-      managed_disk_type = var.data_sa_type
+      name                   = "${var.vm_hostname}-datadisk-${count.index}-${storage_data_disk.value}"
+      create_option          = "Empty"
+      lun                    = storage_data_disk.value
+      disk_size_gb           = var.data_disk_size_gb
+      managed_disk_type      = var.data_sa_type
+#      disk_encryption_set_id = var.data_disk_encryption_set_id
     }
   }
+*/
+  #os_profile {
+  computer_name  = "${var.vm_hostname}-${count.index}"
+  admin_username = var.admin_username
+  admin_password = var.admin_password
+  custom_data    = var.custom_data
+  #}
 
-  os_profile {
-    computer_name  = "${var.vm_hostname}-${count.index}"
-    admin_username = var.admin_username
-    admin_password = var.admin_password
-    custom_data    = var.custom_data
-  }
+  #os_profile_linux_config {
+  disable_password_authentication = var.enable_ssh_key
 
-  os_profile_linux_config {
-    disable_password_authentication = var.enable_ssh_key
-
-    dynamic ssh_keys {
-      for_each = var.enable_ssh_key ? [var.ssh_key] : []
-      content {
-        path     = "/home/${var.admin_username}/.ssh/authorized_keys"
-        key_data = file(var.ssh_key)
-      }
+  dynamic admin_ssh_key {
+    for_each = var.enable_ssh_key ? [var.ssh_key] : []
+    content {
+      username   = var.admin_username
+      public_key = file(var.ssh_key)
     }
   }
+  #}
 
   tags = var.tags
 
   boot_diagnostics {
-    enabled     = var.boot_diagnostics
-    storage_uri = var.boot_diagnostics ? join(",", azurerm_storage_account.vm-sa.*.primary_blob_endpoint) : ""
+    #enabled     = var.boot_diagnostics
+    storage_account_uri = var.boot_diagnostics ? join(",", azurerm_storage_account.vm-sa.*.primary_blob_endpoint) : ""
   }
 }
 
-resource "azurerm_virtual_machine" "vm-windows" {
-  count                         = (var.is_windows_image || contains(list(var.vm_os_simple, var.vm_os_offer), "WindowsServer")) ? var.nb_instances : 0
-  name                          = "${var.vm_hostname}-vmWindows-${count.index}"
-  resource_group_name           = data.azurerm_resource_group.vm.name
-  location                      = coalesce(var.location, data.azurerm_resource_group.vm.location)
-  availability_set_id           = azurerm_availability_set.vm.id
-  vm_size                       = var.vm_size
-  network_interface_ids         = [element(azurerm_network_interface.vm.*.id, count.index)]
-  delete_os_disk_on_termination = var.delete_os_disk_on_termination
-  license_type                  = var.license_type
+resource "azurerm_windows_virtual_machine" "vm-windows" {
+  count                           = (var.is_windows_image || contains(list(var.vm_os_simple, var.vm_os_offer), "WindowsServer")) ? var.nb_instances : 0
+  name                            = "${var.vm_hostname}-vmWindows-${count.index}"
+  resource_group_name             = data.azurerm_resource_group.vm.name
+  location                        = coalesce(var.location, data.azurerm_resource_group.vm.location)
+  availability_set_id             = azurerm_availability_set.vm.id
+  size                         = var.vm_size
+  network_interface_ids           = [element(azurerm_network_interface.vm.*.id, count.index)]
+  #delete_os_disk_on_termination   = var.delete_os_disk_on_termination
+  #delete_data_disk_on_termination = var.delete_data_disk_on_termination
+  license_type                    = var.license_type
 
   dynamic identity {
     for_each = length(var.identity_ids) == 0 && var.identity_type == "SystemAssigned" ? [var.identity_type] : []
@@ -129,21 +134,22 @@ resource "azurerm_virtual_machine" "vm-windows" {
     }
   }
 
-  storage_image_reference {
-    id        = var.vm_os_id
+  source_image_reference {
+#    id        = var.vm_os_id
     publisher = var.vm_os_id == "" ? coalesce(var.vm_os_publisher, module.os.calculated_value_os_publisher) : ""
     offer     = var.vm_os_id == "" ? coalesce(var.vm_os_offer, module.os.calculated_value_os_offer) : ""
     sku       = var.vm_os_id == "" ? coalesce(var.vm_os_sku, module.os.calculated_value_os_sku) : ""
     version   = var.vm_os_id == "" ? var.vm_os_version : ""
   }
 
-  storage_os_disk {
+  os_disk {
     name              = "${var.vm_hostname}-osdisk-${count.index}"
-    create_option     = "FromImage"
+#    create_option     = "FromImage"
     caching           = "ReadWrite"
-    managed_disk_type = var.storage_account_type
+    storage_account_type = var.storage_account_type
+    disk_encryption_set_id = var.os_disk_encryption_set_id
   }
-
+/*
   dynamic storage_data_disk {
     for_each = range(var.nb_data_disk)
     content {
@@ -154,22 +160,22 @@ resource "azurerm_virtual_machine" "vm-windows" {
       managed_disk_type = var.data_sa_type
     }
   }
-
-  os_profile {
+*/
+#  os_profile {
     computer_name  = "${var.vm_hostname}-${count.index}"
     admin_username = var.admin_username
     admin_password = var.admin_password
-  }
+#  }
 
   tags = var.tags
 
-  os_profile_windows_config {
+#  os_profile_windows_config {
     provision_vm_agent = true
-  }
+#  }
 
   boot_diagnostics {
-    enabled     = var.boot_diagnostics
-    storage_uri = var.boot_diagnostics ? join(",", azurerm_storage_account.vm-sa.*.primary_blob_endpoint) : ""
+#    enabled     = var.boot_diagnostics
+    storage_account_uri = var.boot_diagnostics ? join(",", azurerm_storage_account.vm-sa.*.primary_blob_endpoint) : ""
   }
 }
 

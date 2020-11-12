@@ -139,8 +139,26 @@ variable "nb_public_ip" {
 
 variable "delete_os_disk_on_termination" {
   type        = bool
-  description = "Delete datadisk when machine is terminated."
+  description = "Delete OS disk when machine is terminated."
   default     = false
+}
+
+variable "delete_data_disk_on_termination" {
+  type        = bool
+  description = "Delete data disk when machine is terminated."
+  default     = false
+}
+
+variable "data_disk_encryption_set_id" {
+  type        = string
+  description = "Data disk encryption set id"
+  default     = null
+}
+
+variable "os_disk_encryption_set_id" {
+  type        = string
+  description = "OS disk encryption set id"
+  default     = null
 }
 
 variable "data_sa_type" {
